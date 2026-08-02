@@ -1,0 +1,17 @@
+{
+  "fixture": "fridge-receipt.pdf",
+  "source_identity": "acceptance:fridge-receipt:v1",
+  "signals": {
+    "merchant_name": "BRIGHT HOME APPLIANCES",
+    "purchase_date": "2026-08-02",
+    "amount_minor": "249900",
+    "make": "POLARIS",
+    "model": "PF-600X",
+    "serial": "SYN-FRIDGE-90017",
+    "order_reference": "BHA-260802-441"
+  },
+  "expected_target_id": "asset-fridge",
+  "predicate": "purchase_evidence_for",
+  "required_evidence_codes": ["merchant_alias_exact", "model_exact", "serial_exact"]
+}
+

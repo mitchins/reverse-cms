@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.scannerwork
+data
+inbox
+generated-fixtures
+htmlcov
+coverage.xml
+*.pyc
+__pycache__
+

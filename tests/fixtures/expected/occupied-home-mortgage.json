@@ -1,0 +1,14 @@
+{
+  "fixture": "occupied-home-mortgage.pdf",
+  "source_identity": "acceptance:occupied-home-mortgage:v1",
+  "signals": {
+    "issuer_name": "HARBORLIGHT MUTUAL BANK",
+    "property_address": "7 SAMPLE AVENUE HARBOR NSW 2001",
+    "account_suffix": "7734"
+  },
+  "expected_target_id": "property-occupied-home",
+  "predicate": "concerns_property",
+  "required_evidence_codes": ["issuer_exact", "address_exact", "account_suffix_exact"],
+  "forbidden_predicates": ["owns", "is_borrower", "liable_for"]
+}
+

@@ -1,0 +1,62 @@
+name: reverse-crm
+
+x-app: &app
+  build:
+    context: .
+  image: reverse-crm:local
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    REVERSECRM_DATA_DIR: /data
+    REVERSECRM_INBOX_DIR: /inbox
+    REVERSECRM_DATABASE_URL: sqlite:////data/reversecrm.sqlite3
+    # The host publish remains loopback-only; the process must listen on the
+    # container interface for Docker port forwarding to work.
+    REVERSECRM_BIND_HOST: 0.0.0.0
+  init: true
+  read_only: true
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:size=128m,mode=1777
+  volumes:
+    - reversecrm-data:/data
+    - type: bind
+      source: ./inbox
+      target: /inbox
+
+services:
+  app:
+    <<: *app
+    command: ["web"]
+    ports:
+      - "${REVERSECRM_PUBLISH_HOST:-127.0.0.1}:${REVERSECRM_BIND_PORT:-8080}:8080"
+    networks:
+      - frontend
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    network_mode: none
+
+  sonar-scanner:
+    image: sonarsource/sonar-scanner-cli:11
+    profiles: ["quality"]
+    working_dir: /usr/src
+    environment:
+      SONAR_HOST_URL: ${SONAR_HOST_URL:-}
+      SONAR_TOKEN: ${SONAR_TOKEN:-}
+    volumes:
+      - ./:/usr/src:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+networks:
+  frontend:
+
+volumes:
+  reversecrm-data:

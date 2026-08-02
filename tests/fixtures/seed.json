@@ -1,0 +1,69 @@
+{
+  "format_version": 1,
+  "organisations": [
+    {
+      "id": "org-bright-home",
+      "canonical_name": "Bright Home Appliances Pty Ltd",
+      "aliases": ["BRIGHT HOME APPLIANCES"]
+    },
+    {
+      "id": "org-harborlight",
+      "canonical_name": "Harborlight Mutual Bank",
+      "aliases": ["HARBORLIGHT MUTUAL BANK"]
+    },
+    {
+      "id": "org-northstar-council",
+      "canonical_name": "Northstar City Council",
+      "aliases": ["NORTHSTAR CITY COUNCIL"]
+    }
+  ],
+  "properties": [
+    {
+      "id": "property-occupied-home",
+      "label": "Occupied home",
+      "normalised_address": "7 SAMPLE AVENUE HARBOR NSW 2001",
+      "occupancy": "occupied"
+    },
+    {
+      "id": "property-rental",
+      "label": "Rental property",
+      "normalised_address": "18 EXAMPLE STREET NORTHSTAR NSW 2000",
+      "occupancy": "rental"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "account-council-rates",
+      "type": "council_rates",
+      "suffix": "4821",
+      "issuer_id": "org-northstar-council",
+      "related_subject_id": "property-rental"
+    },
+    {
+      "id": "account-mortgage",
+      "type": "mortgage",
+      "suffix": "7734",
+      "issuer_id": "org-harborlight",
+      "related_subject_id": "property-occupied-home"
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-fridge",
+      "label": "Kitchen fridge",
+      "make": "POLARIS",
+      "model": "PF-600X",
+      "serial": "SYN-FRIDGE-90017",
+      "order_reference": "BHA-260802-441"
+    },
+    {
+      "id": "asset-freezer-distractor",
+      "label": "Garage freezer",
+      "make": "POLARIS",
+      "model": "PF-500F",
+      "serial": "SYN-FREEZER-11203",
+      "order_reference": "BHA-250104-119"
+    }
+  ]
+}
+

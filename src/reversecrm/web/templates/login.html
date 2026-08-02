@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Reviewer login · Reverse CRM</title></head>
+  <body>
+    <main>
+      <h1>Reviewer login</h1>
+      {% if failed %}<p role="alert">Login failed.</p>{% endif %}
+      <form action="/login" method="post">
+        <label>Review token <input type="password" name="review_token" autocomplete="current-password" required></label>
+        <button type="submit">Log in</button>
+      </form>
+    </main>
+  </body>
+</html>

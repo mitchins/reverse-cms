@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Review relationship · Reverse CRM</title></head>
+  <body>
+    <main>
+      <h1>Review document</h1>
+      <p>Processing state: <strong>{{ state }}</strong></p>
+      {% for proposal in proposals %}
+      <article>
+        <h2>{{ proposal.target_label }}</h2>
+        <p>{{ proposal.predicate }} · score {{ proposal.score }}</p>
+        <ul>{% for code, value in proposal.evidence %}<li>{{ code }}: {{ value }}</li>{% endfor %}</ul>
+        <form action="/proposals/{{ proposal.id }}/confirm" method="post">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="idempotency_key" value="web-confirm:{{ proposal.id }}">
+          <button type="submit">Confirm relationship</button>
+        </form>
+      </article>
+      {% else %}<p>No supported relationship proposal was found.</p>{% endfor %}
+    </main>
+  </body>
+</html>
