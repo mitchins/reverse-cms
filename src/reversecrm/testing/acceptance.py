@@ -27,6 +27,7 @@ from reversecrm.db.schema import (
     organisation_alias,
     property_table,
 )
+from reversecrm.domain.normalise import normalise_text
 from reversecrm.evidence import EvidenceStore
 
 
@@ -115,7 +116,7 @@ class AcceptanceDriver:
                     insert(organisation).values(
                         object_id=item["id"],
                         canonical_name=item["canonical_name"],
-                        normalised_name=item["canonical_name"].upper(),
+                        normalised_name=normalise_text(item["canonical_name"]),
                     )
                 )
                 for alias in item["aliases"]:

@@ -5,6 +5,9 @@
 .pytest_cache
 .ruff_cache
 .scannerwork
+.env
+.env.*
+!.env.example
 data
 inbox
 generated-fixtures
@@ -12,4 +15,3 @@ htmlcov
 coverage.xml
 *.pyc
 __pycache__
-

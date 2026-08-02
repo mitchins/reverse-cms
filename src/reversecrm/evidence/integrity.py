@@ -18,7 +18,8 @@ class IntegrityService:
 
     def inspect(self) -> IntegrityReport:
         with self.database.connect() as connection:
-            database_ok = connection.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
+            integrity_rows = connection.execute(text("PRAGMA integrity_check")).scalars().all()
+            database_ok = list(integrity_rows) == ["ok"]
             foreign_keys = tuple(
                 str(tuple(row)) for row in connection.execute(text("PRAGMA foreign_key_check"))
             )

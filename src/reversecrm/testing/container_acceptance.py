@@ -26,7 +26,7 @@ def main() -> None:
         tempfile.TemporaryDirectory(prefix="reversecrm-acceptance-") as directory,
         AcceptanceDriver(Path(directory)) as driver,
     ):
-        driver.seed(json.loads(SEED_PATH.read_text()))
+        driver.seed(json.loads(SEED_PATH.read_text(encoding="utf-8")))
         submissions: dict[str, str] = {}
         for fixture in EXPECTED:
             receipt = driver.application.submit(
@@ -53,6 +53,8 @@ def main() -> None:
         for fixture, expected_target in EXPECTED.items():
             document_id = submissions[fixture]
             proposals = driver.application.proposals(document_id)
+            if not proposals:
+                raise RuntimeError(f"no proposal was produced for {fixture}")
             proposal = proposals[0]
             if (
                 proposal.target_id != expected_target

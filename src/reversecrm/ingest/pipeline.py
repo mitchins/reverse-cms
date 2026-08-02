@@ -1,13 +1,11 @@
-"""A single-purpose, bounded processing worker.
-
-Claiming and durable state transitions belong to persistence. Expensive file
-inspection, text extraction, and matching happen outside database transactions.
-"""
+"""Bounded subprocess boundary for deterministic document text extraction."""
 
 from __future__ import annotations
 
 import os
+import selectors
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +22,55 @@ class ProcessingError(RuntimeError):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__(code)
+
+
+def _run_bounded(
+    command: list[str], *, env: dict[str, str], max_bytes: int, timeout_seconds: float
+) -> bytes:
+    """Run a fixed argv command while bounding stdout bytes and wall time."""
+
+    try:
+        process = subprocess.Popen(  # noqa: S603
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
+    except OSError as exc:
+        raise ProcessingError("text_extractor_unavailable") from exc
+    if process.stdout is None:  # pragma: no cover - guaranteed by stdout=PIPE
+        process.kill()
+        raise ProcessingError("text_extraction_failed")
+
+    output = bytearray()
+    deadline = time.monotonic() + timeout_seconds
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ)
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                raise ProcessingError("text_extraction_timeout")
+            chunk = os.read(process.stdout.fileno(), min(64 * 1024, max_bytes + 1 - len(output)))
+            if not chunk:
+                break
+            output.extend(chunk)
+            if len(output) > max_bytes:
+                raise ProcessingError("text_size")
+        try:
+            return_code = process.wait(timeout=max(deadline - time.monotonic(), 0.001))
+        except subprocess.TimeoutExpired as exc:
+            raise ProcessingError("text_extraction_timeout") from exc
+    finally:
+        selector.close()
+        process.stdout.close()
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+
+    if return_code != 0:
+        raise ProcessingError("text_extraction_failed")
+    return bytes(output)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,25 +108,14 @@ class BoundedTextExtractor:
         else:
             command = ["tesseract", str(path.resolve()), "stdout", "-l", "eng"]
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": "C.UTF-8"}
+        stdout = _run_bounded(
+            command,
+            env=env,
+            max_bytes=self.max_text_bytes,
+            timeout_seconds=self.timeout_seconds,
+        )
         try:
-            # Fixed executable/flags, argv-only invocation, bounded input and timeout.
-            completed = subprocess.run(  # noqa: S603
-                command,
-                check=False,
-                capture_output=True,
-                timeout=self.timeout_seconds,
-                env=env,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise ProcessingError("text_extraction_timeout") from exc
-        except OSError as exc:
-            raise ProcessingError("text_extractor_unavailable") from exc
-        if completed.returncode != 0:
-            raise ProcessingError("text_extraction_failed")
-        if len(completed.stdout) > self.max_text_bytes:
-            raise ProcessingError("text_size")
-        try:
-            text = completed.stdout.decode("utf-8")
+            text = stdout.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise ProcessingError("text_encoding") from exc
         if not text.strip():

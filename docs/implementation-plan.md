@@ -62,8 +62,8 @@ Use:
 - `uv` with locked dependencies;
 - FastAPI, Pydantic v2, Jinja2, and minimal HTMX;
 - SQLAlchemy Core and Alembic with explicit SQLite `STRICT` migrations;
-- Typer for seed, worker, integrity, and fixture commands;
-- pytest/pytest-cov, Ruff, mypy, and a small Playwright happy path;
+- Typer for worker, retry, integrity, and fixture-generation commands;
+- pytest/pytest-cov, Ruff, mypy, focused web-boundary tests, and container acceptance;
 - SonarQube/SonarCloud analysis in CI, plus dependency and container scanning.
 
 Do not introduce a generic repository framework, plugin system, broker, SPA toolchain, or distributed task abstraction.

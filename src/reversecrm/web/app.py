@@ -109,7 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def login(
         request: Request, supplied_token: Annotated[str, Form(alias="review_token")]
     ) -> Response:
-        if not secrets.compare_digest(supplied_token, review_credential):
+        if not secrets.compare_digest(supplied_token.encode(), review_credential.encode()):
             return TEMPLATES.TemplateResponse(
                 request, "login.html", {"failed": True}, status_code=401
             )
@@ -208,7 +208,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> dict[str, str | bool]:
         expected = f"Bearer {api_credential}"
-        if authorization is None or not secrets.compare_digest(authorization, expected):
+        if authorization is None or not secrets.compare_digest(
+            authorization.encode(), expected.encode()
+        ):
             raise HTTPException(status_code=401, detail="bearer authentication required")
         if not idempotency_key or len(idempotency_key) > 200:
             raise HTTPException(status_code=400, detail="Idempotency-Key is required")

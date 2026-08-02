@@ -439,6 +439,8 @@ class PersistenceService:
                 }
                 if stored_evidence != requested_evidence:
                     raise ProposalConflict("persisted proposal evidence differs from replay")
+                if not ({e.code for e in item.evidence} & CANDIDATE_SPECIFIC_CODES):
+                    raise EvidenceValidationError("proposal lacks candidate-specific evidence")
                 for evidence in item.evidence:
                     request = ValidationRequest(
                         document_id,
@@ -543,26 +545,31 @@ class PersistenceService:
             )
             return dict(row) if row else None
 
-    def claim_processing_job(self, *, worker_id: str, lease_seconds: int = 300) -> str | None:
+    def claim_processing_job(
+        self,
+        *,
+        worker_id: str,
+        lease_seconds: int = 300,
+        document_id: str | None = None,
+    ) -> str | None:
         """Claim one pending or expired document job without doing processing work."""
         if lease_seconds <= 0:
             raise ValueError("lease duration must be positive")
         now = _now()
         lease_expires_at = (datetime.now(UTC) + timedelta(seconds=lease_seconds)).isoformat()
         with self.database.transaction() as connection:
+            claimable = or_(
+                processing_job.c.state == "pending",
+                and_(
+                    processing_job.c.state == "processing",
+                    processing_job.c.lease_expires_at < now,
+                ),
+            )
+            query = select(processing_job.c.document_id).where(claimable)
+            if document_id is not None:
+                query = query.where(processing_job.c.document_id == document_id)
             candidate = connection.execute(
-                select(processing_job.c.document_id)
-                .where(
-                    or_(
-                        processing_job.c.state == "pending",
-                        and_(
-                            processing_job.c.state == "processing",
-                            processing_job.c.lease_expires_at < now,
-                        ),
-                    )
-                )
-                .order_by(processing_job.c.document_id)
-                .limit(1)
+                query.order_by(processing_job.c.document_id).limit(1)
             ).scalar_one_or_none()
             if candidate is None:
                 return None
@@ -653,7 +660,7 @@ class PersistenceService:
                 .one_or_none()
             )
             if job is None:
-                raise KeyError("processing job not found")
+                raise ProcessingConflict("processing job not found")
             document_row = (
                 connection.execute(select(document).where(document.c.object_id == document_id))
                 .mappings()
@@ -858,7 +865,7 @@ class PersistenceService:
                 .one_or_none()
             )
             if job is None:
-                raise KeyError("processing job not found")
+                raise ProcessingConflict("processing job not found")
             if job["state"] != "failed":
                 raise ProcessingConflict("only failed processing jobs may be retried")
             if job["attempt_count"] >= max_attempts:

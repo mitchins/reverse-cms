@@ -139,6 +139,33 @@ def test_begin_immediate_serializes_writers_at_transaction_entry(
     assert second_entered.is_set()
 
 
+def test_claim_can_target_one_document_without_leasing_an_earlier_job(
+    persistence: tuple[Database, PersistenceService],
+) -> None:
+    _database, service = persistence
+    first_document = _ingest(service, "first-source")
+    second_document = service.ingest_placement(
+        source_kind="test", source_identity="second-source", placement=_placement("c")
+    ).document_id
+
+    assert service.claim_processing_job(worker_id="worker", document_id=second_document) == (
+        second_document
+    )
+    assert service.get_processing_job(first_document)["state"] == "pending"  # type: ignore[index]
+    assert service.get_processing_job(second_document)["state"] == "processing"  # type: ignore[index]
+
+
+def test_retry_unknown_document_returns_typed_conflict(
+    persistence: tuple[Database, PersistenceService],
+) -> None:
+    _database, service = persistence
+
+    with pytest.raises(ProcessingConflict, match="not found"):
+        service.retry_processing_job(
+            "missing-document", actor="operator", idempotency_key="retry-missing"
+        )
+
+
 def test_concurrent_same_source_ingest_replays_without_integrity_error(
     persistence: tuple[Database, PersistenceService],
 ) -> None:

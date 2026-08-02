@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 
 from sqlalchemy import func, select
 
-from reversecrm.db import Database
+from reversecrm.db import Database, ProcessingConflict
 from reversecrm.db.contracts import (
     ExtractionSignalInput,
     ProcessingProposalEvidenceInput,
@@ -31,7 +32,7 @@ from reversecrm.db.services import ConfirmationService, PersistenceService
 from reversecrm.domain.models import ExtractionSignal, ProposalDraft, SignalType
 from reversecrm.evidence import EvidenceStore
 from reversecrm.extract.anchors import EXTRACTOR_VERSION, extract_anchor
-from reversecrm.ingest.pipeline import BoundedTextExtractor
+from reversecrm.ingest.pipeline import BoundedTextExtractor, ProcessingError
 from reversecrm.match.persistence import SqlCandidateReader, SqlEvidenceValidator
 from reversecrm.match.service import build_proposals
 
@@ -136,22 +137,38 @@ class CoreApplication:
         state = self.persistence.get_processing_job(submission.document_id)
         if state is not None and state["state"] != "complete":
             worker_id = f"synchronous:{uuid.uuid4().hex}"
-            claimed = self.persistence.claim_processing_job(worker_id=worker_id)
+            claimed = self.persistence.claim_processing_job(
+                worker_id=worker_id, document_id=submission.document_id
+            )
             if claimed != submission.document_id:
                 raise RuntimeError("document processing job could not be claimed")
-            prepared = self.prepare_processing(
-                submission.document_id, text_extractor=text_extractor
-            )
-            self.persistence.complete_processing(
-                submission.document_id,
-                worker_id=worker_id,
-                document_type=prepared.document_type,
-                document_date=prepared.document_date,
-                extractor_version=prepared.extractor_version,
-                signals=prepared.signals,
-                proposals=prepared.proposals,
-                validator=self.validator,
-            )
+            try:
+                prepared = self.prepare_processing(
+                    submission.document_id, text_extractor=text_extractor
+                )
+                self.persistence.complete_processing(
+                    submission.document_id,
+                    worker_id=worker_id,
+                    document_type=prepared.document_type,
+                    document_date=prepared.document_date,
+                    extractor_version=prepared.extractor_version,
+                    signals=prepared.signals,
+                    proposals=prepared.proposals,
+                    validator=self.validator,
+                )
+            except Exception as error:
+                error_code = (
+                    error.code
+                    if isinstance(error, (ProcessingError, ProcessingConflict))
+                    else "document_processing_failed"
+                )
+                with suppress(ProcessingConflict):
+                    self.persistence.fail_processing_job(
+                        submission.document_id,
+                        worker_id=worker_id,
+                        error_code=error_code,
+                    )
+                raise
         return SubmissionView(
             submission.document_id,
             submission.blob_id,

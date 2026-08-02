@@ -123,6 +123,10 @@ document = Table(
     Column("document_date", Text),
     Column("processing_state", Text, nullable=False, server_default="pending"),
     Column("extractor_version", Text),
+    CheckConstraint(
+        "processing_state IN ('pending','processing','complete','failed')",
+        name="ck_document_processing_state",
+    ),
     sqlite_strict=True,
 )
 extraction_signal = Table(

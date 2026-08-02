@@ -147,6 +147,23 @@ def test_anonymous_get_does_not_mint_session_and_login_credentials_do_not_substi
     app.state.database.engine.dispose()
 
 
+def test_non_ascii_credentials_are_rejected_without_server_error(tmp_path: Path) -> None:
+    app = create_app(settings_for(tmp_path))
+    with TestClient(app) as client:
+        login_response = client.post("/login", data={"review_token": "not-ascii-é"})
+        assert login_response.status_code == 401
+
+        api_response = client.post(
+            "/api/proposals/not-found/confirm",
+            headers=[
+                (b"authorization", b"Bearer \xff"),
+                (b"idempotency-key", b"non-ascii-credential"),
+            ],
+        )
+        assert api_response.status_code == 401
+    app.state.database.engine.dispose()
+
+
 def test_api_accepts_only_machine_token(tmp_path: Path) -> None:
     app = create_app(settings_for(tmp_path))
     with TestClient(app) as client:

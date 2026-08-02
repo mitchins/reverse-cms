@@ -73,6 +73,104 @@ def _classify(text: str, fields: dict[str, list[tuple[str, str]]]) -> DocumentKi
     raise ValueError("document does not match a registered deterministic extractor")
 
 
+def _heading_identity(text: str) -> tuple[str, str] | None:
+    """Return a conventional letterhead line immediately before the heading."""
+
+    lines = [
+        (line.strip(), f"line:{number}")
+        for number, line in enumerate(text.splitlines(), 1)
+        if line.strip()
+    ]
+    if len(lines) < 2:
+        return None
+    heading = normalise_text(lines[1][0])
+    markers = ("COUNCIL RATES", "MORTGAGE STATEMENT", "PURCHASE RECEIPT", "TAX INVOICE")
+    return lines[0] if any(marker in heading for marker in markers) else None
+
+
+def _add_signal(
+    signals: list[ExtractionSignal],
+    fields: dict[str, list[tuple[str, str]]],
+    signal_type: SignalType,
+    normaliser: Callable[[str], str],
+    *labels: str,
+) -> None:
+    raw = _first(fields, *labels)
+    if raw is not None:
+        signals.append(_signal(signal_type, raw, normaliser(raw[0])))
+
+
+def _property_signals(
+    fields: dict[str, list[tuple[str, str]]], letterhead: tuple[str, str] | None
+) -> list[ExtractionSignal]:
+    signals: list[ExtractionSignal] = []
+    _add_signal(
+        signals, fields, SignalType.ISSUER_NAME, normalise_text, "ISSUER", "LENDER", "COUNCIL"
+    )
+    if not signals and letterhead is not None:
+        signals.append(_signal(SignalType.ISSUER_NAME, letterhead, normalise_text(letterhead[0])))
+    _add_signal(
+        signals,
+        fields,
+        SignalType.PROPERTY_ADDRESS,
+        normalise_text,
+        "PROPERTY ADDRESS",
+        "SERVICE ADDRESS",
+        "SERVICE PROPERTY",
+        "MORTGAGED PROPERTY",
+    )
+    _add_signal(
+        signals,
+        fields,
+        SignalType.ACCOUNT_SUFFIX,
+        normalise_account_suffix,
+        "ACCOUNT SUFFIX",
+        "ACCOUNT NUMBER",
+        "LOAN ACCOUNT",
+        "MORTGAGE ACCOUNT",
+        "ASSESSMENT NUMBER",
+        "ASSESSMENT ACCOUNT",
+    )
+    return signals
+
+
+def _asset_signals(
+    fields: dict[str, list[tuple[str, str]]], letterhead: tuple[str, str] | None
+) -> list[ExtractionSignal]:
+    signals: list[ExtractionSignal] = []
+    _add_signal(
+        signals, fields, SignalType.MERCHANT_NAME, normalise_text, "MERCHANT", "SELLER", "STORE"
+    )
+    if not signals and letterhead is not None:
+        signals.append(_signal(SignalType.MERCHANT_NAME, letterhead, normalise_text(letterhead[0])))
+    _add_signal(signals, fields, SignalType.PURCHASE_DATE, _normalise_date, "PURCHASE DATE", "DATE")
+    _add_signal(
+        signals, fields, SignalType.AMOUNT_MINOR, amount_to_minor, "AMOUNT", "TOTAL", "TOTAL AMOUNT"
+    )
+    _add_signal(signals, fields, SignalType.MAKE, normalise_text, "MAKE", "BRAND")
+    _add_signal(signals, fields, SignalType.MODEL, normalise_identifier, "MODEL")
+    item = _first(fields, "ITEM", "PRODUCT")
+    if item is not None and len(tokens := item[0].split()) >= 2:
+        if not any(signal.signal_type is SignalType.MAKE for signal in signals):
+            signals.append(
+                _signal(SignalType.MAKE, (tokens[0], item[1]), normalise_text(tokens[0]))
+            )
+        if not any(signal.signal_type is SignalType.MODEL for signal in signals):
+            signals.append(
+                _signal(SignalType.MODEL, (tokens[1], item[1]), normalise_identifier(tokens[1]))
+            )
+    _add_signal(signals, fields, SignalType.SERIAL, normalise_identifier, "SERIAL", "SERIAL NUMBER")
+    _add_signal(
+        signals,
+        fields,
+        SignalType.ORDER_REFERENCE,
+        normalise_identifier,
+        "ORDER REFERENCE",
+        "ORDER NUMBER",
+    )
+    return signals
+
+
 def extract_anchor(text: str) -> ExtractionResult:
     """Extract only explicit labelled values; no inference or model fallback."""
 
@@ -80,82 +178,11 @@ def extract_anchor(text: str) -> ExtractionResult:
         raise ValueError("OCR text exceeds extraction limit")
     fields = _fields(text)
     kind = _classify(text, fields)
-    signals: list[ExtractionSignal] = []
-
-    nonempty_lines = [
-        (line.strip(), f"line:{number}")
-        for number, line in enumerate(text.splitlines(), 1)
-        if line.strip()
-    ]
-
-    def heading_identity() -> tuple[str, str] | None:
-        """Use a conventional letterhead line immediately before the document heading."""
-
-        if len(nonempty_lines) < 2:
-            return None
-        first, second = nonempty_lines[0], nonempty_lines[1]
-        heading = normalise_text(second[0])
-        if any(
-            marker in heading
-            for marker in ("COUNCIL RATES", "MORTGAGE STATEMENT", "PURCHASE RECEIPT", "TAX INVOICE")
-        ):
-            return first
-        return None
-
-    def add(signal_type: SignalType, normaliser: Callable[[str], str], *labels: str) -> None:
-        raw = _first(fields, *labels)
-        if raw is None:
-            return
-        signals.append(_signal(signal_type, raw, normaliser(raw[0])))
-
+    letterhead = _heading_identity(text)
     if kind in {DocumentKind.COUNCIL_RATES, DocumentKind.MORTGAGE_STATEMENT}:
-        add(SignalType.ISSUER_NAME, normalise_text, "ISSUER", "LENDER", "COUNCIL")
-        if not any(item.signal_type is SignalType.ISSUER_NAME for item in signals):
-            letterhead = heading_identity()
-            if letterhead is not None:
-                signals.append(
-                    _signal(SignalType.ISSUER_NAME, letterhead, normalise_text(letterhead[0]))
-                )
-        add(
-            SignalType.PROPERTY_ADDRESS,
-            normalise_text,
-            "PROPERTY ADDRESS",
-            "SERVICE ADDRESS",
-            "SERVICE PROPERTY",
-            "MORTGAGED PROPERTY",
-        )
-        add(
-            SignalType.ACCOUNT_SUFFIX,
-            normalise_account_suffix,
-            "ACCOUNT SUFFIX",
-            "ACCOUNT NUMBER",
-            "LOAN ACCOUNT",
-            "MORTGAGE ACCOUNT",
-            "ASSESSMENT NUMBER",
-            "ASSESSMENT ACCOUNT",
-        )
+        signals = _property_signals(fields, letterhead)
     else:
-        add(SignalType.MERCHANT_NAME, normalise_text, "MERCHANT", "SELLER", "STORE")
-        if not any(item.signal_type is SignalType.MERCHANT_NAME for item in signals):
-            letterhead = heading_identity()
-            if letterhead is not None:
-                signals.append(
-                    _signal(SignalType.MERCHANT_NAME, letterhead, normalise_text(letterhead[0]))
-                )
-        add(SignalType.PURCHASE_DATE, _normalise_date, "PURCHASE DATE", "DATE")
-        add(SignalType.AMOUNT_MINOR, amount_to_minor, "AMOUNT", "TOTAL", "TOTAL AMOUNT")
-        add(SignalType.MAKE, normalise_text, "MAKE", "BRAND")
-        add(SignalType.MODEL, normalise_identifier, "MODEL")
-        item = _first(fields, "ITEM", "PRODUCT")
-        if item is not None:
-            tokens = item[0].split()
-            if len(tokens) >= 2:
-                if not any(signal.signal_type is SignalType.MAKE for signal in signals):
-                    signals.append(_signal(SignalType.MAKE, item, normalise_text(tokens[0])))
-                if not any(signal.signal_type is SignalType.MODEL for signal in signals):
-                    signals.append(_signal(SignalType.MODEL, item, normalise_identifier(tokens[1])))
-        add(SignalType.SERIAL, normalise_identifier, "SERIAL", "SERIAL NUMBER")
-        add(SignalType.ORDER_REFERENCE, normalise_identifier, "ORDER REFERENCE", "ORDER NUMBER")
+        signals = _asset_signals(fields, letterhead)
     if not signals:
         raise ValueError("registered document yielded no explicit signals")
     return ExtractionResult(kind, tuple(signals))

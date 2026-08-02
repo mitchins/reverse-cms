@@ -71,6 +71,7 @@ def test_strict_schema_and_connection_policy(
             text("SELECT sql FROM sqlite_master WHERE type='table' AND name='document'")
         ).scalar_one()
         assert table_sql.strip().endswith("STRICT")
+        assert "ck_document_processing_state" in table_sql
         assert set(inspect(connection).get_table_names()) >= {
             "alembic_version",
             "object",
@@ -79,6 +80,15 @@ def test_strict_schema_and_connection_policy(
             "relation",
             "audit_event",
         }
+
+
+def test_initial_revision_is_frozen_from_application_metadata() -> None:
+    revision = Path("src/reversecrm/db/migrations/versions/0001_strict_core.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "reversecrm.db.schema" not in revision
+    assert "metadata.create_all" not in revision
 
 
 def test_stream_placement_and_source_document_reuse(

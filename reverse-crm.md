@@ -1,5 +1,10 @@
 # Day-One MVP for a Personal Reverse-CRM
 
+> **Research roadmap, not the implemented first-slice contract.** The shipped scope is governed
+> by [`docs/frozen-mission.md`](docs/frozen-mission.md). Hermes, Telegram, email sync, obligations,
+> and model-driven extraction described below are possible later integrations and are explicitly
+> excluded from the current implementation.
+
 ## Executive summary
 
 A personal reverse-CRM should be defined as a **household-controlled relationship and evidence system**: a private register of people, organisations, contacts, properties, assets, accounts and obligations, linked to the documents and interactions that support what the household believes about them. The concept extends Harvard Project VRM’s long-standing idea that individuals need tools reciprocal to vendor-owned CRM, while borrowing the useful people-and-relationship orientation of personal CRM systems such as Monica. Project VRM describes VRM as tools that help individuals manage relationships with vendors; Monica demonstrates the practical value of modelling contacts, relationships, activities, reminders and obligations from the individual’s perspective. citeturn0search0turn0search24turn0search1turn0search25

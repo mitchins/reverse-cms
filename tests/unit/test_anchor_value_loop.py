@@ -149,6 +149,16 @@ Order Reference: ORD-55291
     assert proposals[0].evidence[0].code in registry_codes()
 
 
+def test_item_fallback_displays_the_exact_make_and_model_tokens() -> None:
+    extracted = extract_anchor(
+        "TAX INVOICE\nMerchant: Example Store\nItem: Polaris PF-600X Refrigerator\n"
+    )
+    displays = {signal.signal_type: signal.display_value for signal in extracted.signals}
+
+    assert displays[SignalType.MAKE] == "Polaris"
+    assert displays[SignalType.MODEL] == "PF-600X"
+
+
 def test_issuer_or_merchant_alone_cannot_create_a_proposal() -> None:
     extracted = extract_anchor("TAX INVOICE / RECEIPT\nMerchant: Harbour Appliances\n")
     merchant_only = CandidateSnapshot(
