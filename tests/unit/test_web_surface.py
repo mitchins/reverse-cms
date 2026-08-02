@@ -222,6 +222,7 @@ def test_expired_session_is_rejected_and_logout_requires_csrf(tmp_path: Path) ->
         client.cookies.clear()
         csrf = login(client)
         assert client.post("/logout", data={"csrf": "wrong"}).status_code == 403
+        assert client.post("/logout", data={"csrf": "☃"}).status_code == 403
         logged_out = client.post("/logout", data={"csrf": csrf}, follow_redirects=False)
         assert logged_out.status_code == 303
         assert "reversecrm_session" not in client.cookies

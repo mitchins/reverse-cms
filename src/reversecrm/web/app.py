@@ -95,7 +95,7 @@ class WebContext:
 
     @staticmethod
     def require_csrf(session: LocalSession, supplied: str) -> None:
-        if not secrets.compare_digest(session.csrf, supplied):
+        if not secrets.compare_digest(session.csrf.encode(), supplied.encode()):
             raise CsrfValidationError
 
 
