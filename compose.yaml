@@ -44,18 +44,6 @@ services:
     command: ["worker"]
     network_mode: none
 
-  sonar-scanner:
-    image: sonarsource/sonar-scanner-cli:11
-    profiles: ["quality"]
-    working_dir: /usr/src
-    environment:
-      SONAR_HOST_URL: ${SONAR_HOST_URL:-}
-      SONAR_TOKEN: ${SONAR_TOKEN:-}
-    volumes:
-      - ./:/usr/src:ro
-    extra_hosts:
-      - host.docker.internal:host-gateway
-
 networks:
   frontend:
 

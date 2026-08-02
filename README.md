@@ -60,15 +60,6 @@ CI emits `coverage.xml` and `test-results.xml`, then runs SonarCloud when creden
 
 The project expects a quality gate that requires maintainability rating A on new code and no new blocker/critical issues or vulnerabilities. `sonar.qualitygate.wait=true` makes a failed SonarCloud gate fail the analysis job.
 
-The optional Compose scanner profile can also target a compatible local SonarQube instance:
-
-```sh
-uv run pytest --cov --cov-report=xml --junitxml=test-results.xml
-SONAR_HOST_URL=http://host.docker.internal:9000 SONAR_TOKEN=... docker compose --profile quality run --rm sonar-scanner
-```
-
-The scanner profile is optional and does not add SonarQube itself to the application stack.
-
 ## Security and contribution
 
 Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Contributions are welcome under [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). The project is licensed under Apache-2.0.
