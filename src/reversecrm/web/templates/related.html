@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Related documents · Reverse CRM</title></head>
+  <body>
+    <main>
+      <h1>Related documents</h1>
+      {% for document in documents %}
+      <article>
+        <h2>{{ document.label }}</h2>
+        <p>{{ document.predicate }}</p>
+        <ul>{% for code, value in document.evidence %}<li>{{ code }}: {{ value }}</li>{% endfor %}</ul>
+      </article>
+      {% else %}<p>No confirmed related documents.</p>{% endfor %}
+    </main>
+  </body>
+</html>

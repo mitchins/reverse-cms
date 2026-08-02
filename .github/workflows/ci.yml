@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.3"
+          enable-cache: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install document tools
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y poppler-utils tesseract-ocr
+      - run: uv sync --frozen --extra test
+      - run: uv run ruff check .
+      - run: uv run ruff format --check src tests
+      - run: uv run mypy src
+      - run: uv run pytest --cov --cov-report=term-missing --cov-report=xml --junitxml=test-results.xml
+      - name: Require SonarCloud on main
+        if: ${{ github.event_name == 'push' && env.SONAR_TOKEN == '' }}
+        run: |
+          echo "SONAR_TOKEN is required for main-branch SonarCloud analysis" >&2
+          exit 1
+      - name: SonarCloud analysis
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.3"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: uv export --frozen --no-dev --no-emit-project -o requirements-audit.txt
+      # uv's export is fully pinned and already contains transitive dependencies.
+      - run: uvx pip-audit --disable-pip --no-deps -r requirements-audit.txt
+
+  container-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          tags: reverse-crm:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Runtime OCR tools smoke test
+        run: >-
+          docker run --rm --network none --entrypoint sh reverse-crm:ci -c
+          'command -v pdftotext && command -v tesseract && command -v ocrmypdf'
+      - name: Network-disabled queue-worker-review acceptance
+        run: >-
+          docker run --rm --network none
+          -v "$PWD/tests/fixtures:/fixtures:ro"
+          --entrypoint python reverse-crm:ci
+          -m reversecrm.testing.container_acceptance
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.72.0
+          image-ref: reverse-crm:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif

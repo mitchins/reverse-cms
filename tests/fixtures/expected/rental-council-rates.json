@@ -1,0 +1,14 @@
+{
+  "fixture": "rental-council-rates.pdf",
+  "source_identity": "acceptance:rental-council-rates:v1",
+  "signals": {
+    "issuer_name": "NORTHSTAR CITY COUNCIL",
+    "property_address": "18 EXAMPLE STREET NORTHSTAR NSW 2000",
+    "account_suffix": "4821"
+  },
+  "expected_target_id": "property-rental",
+  "predicate": "concerns_property",
+  "required_evidence_codes": ["issuer_exact", "address_exact", "account_suffix_exact"],
+  "forbidden_first_target_id": "property-occupied-home"
+}
+
