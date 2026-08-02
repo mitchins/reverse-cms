@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -94,8 +93,7 @@ class AcceptanceDriver:
     ) -> None:
         self.database.engine.dispose()
 
-    def seed(self, seed_path: str | Path) -> None:
-        seed = json.loads(Path(seed_path).read_text())
+    def seed(self, seed: dict[str, list[dict[str, Any]]]) -> None:
         self.seed_subject_ids = frozenset(
             item["id"]
             for group in ("organisations", "properties", "accounts", "assets")

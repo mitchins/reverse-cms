@@ -24,7 +24,11 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.8.3 /uv /uvx /bin/
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-RUN uv sync --frozen --no-dev --no-cache
+RUN uv sync --frozen --no-dev --no-cache \
+    && rm -rf \
+        /usr/local/lib/python3.12/site-packages/pip \
+        /usr/local/lib/python3.12/site-packages/pip-*.dist-info \
+    && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.12
 
 RUN mkdir -p /data /inbox /work \
     && chown -R reversecrm:reversecrm /data /inbox /work /app

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import json
 import logging
-import sys
 import tempfile
 from pathlib import Path
 
@@ -18,16 +18,15 @@ EXPECTED = {
     "occupied-home-mortgage.pdf": "property-occupied-home",
     "fridge-receipt.pdf": "asset-fridge",
 }
+SEED_PATH = Path("/fixtures/seed.json")
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: python -m reversecrm.testing.container_acceptance SEED_JSON")
     with (
         tempfile.TemporaryDirectory(prefix="reversecrm-acceptance-") as directory,
         AcceptanceDriver(Path(directory)) as driver,
     ):
-        driver.seed(sys.argv[1])
+        driver.seed(json.loads(SEED_PATH.read_text()))
         submissions: dict[str, str] = {}
         for fixture in EXPECTED:
             receipt = driver.application.submit(

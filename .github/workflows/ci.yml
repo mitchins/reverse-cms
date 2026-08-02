@@ -16,6 +16,8 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.8.3"
@@ -74,9 +76,10 @@ jobs:
           docker run --rm --network none
           -v "$PWD/tests/fixtures:/fixtures:ro"
           --entrypoint python reverse-crm:ci
-          -m reversecrm.testing.container_acceptance /fixtures/seed.json
+          -m reversecrm.testing.container_acceptance
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.72.0
           image-ref: reverse-crm:ci
           format: sarif
           output: trivy-results.sarif
