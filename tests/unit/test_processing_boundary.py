@@ -11,8 +11,9 @@ from reversecrm.ingest.pipeline import BoundedTextExtractor, ProcessingError, _r
 def test_text_extractor_rejects_unregistered_mime(tmp_path: Path) -> None:
     source = tmp_path / "document.txt"
     source.write_text("receipt")
+    extractor = BoundedTextExtractor()
     with pytest.raises(ProcessingError, match="unsupported_mime"):
-        BoundedTextExtractor().extract(source, "text/plain")
+        extractor.extract(source, "text/plain")
 
 
 def test_text_extractor_rejects_symlink(tmp_path: Path) -> None:
@@ -20,8 +21,9 @@ def test_text_extractor_rejects_symlink(tmp_path: Path) -> None:
     source.write_bytes(b"%PDF")
     link = tmp_path / "link.pdf"
     link.symlink_to(source)
+    extractor = BoundedTextExtractor()
     with pytest.raises(ProcessingError, match="unsafe_input"):
-        BoundedTextExtractor().extract(link, "application/pdf")
+        extractor.extract(link, "application/pdf")
 
 
 def test_text_extractor_uses_argv_timeout_and_page_bound(

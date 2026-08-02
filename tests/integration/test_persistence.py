@@ -106,8 +106,10 @@ def test_stream_placement_and_source_document_reuse(
         source_kind="direct", source_identity="two", placement=placement
     )
 
-    assert replay.replayed_source and replay.source_reference_id == first.source_reference_id
-    assert distinct.reused_document and distinct.document_id == first.document_id
+    assert replay.replayed_source
+    assert replay.source_reference_id == first.source_reference_id
+    assert distinct.reused_document
+    assert distinct.document_id == first.document_id
     assert store.resolve(placement.relative_path).read_bytes() == b"same immutable bytes"
     with database.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(evidence_blob)) == 1
@@ -161,7 +163,8 @@ def test_bounded_proposal_confirmation_idempotency_and_relationship_query(
         validator=validator,
     )
 
-    assert replay.replayed and replay.decision_id == first.decision_id
+    assert replay.replayed
+    assert replay.decision_id == first.decision_id
     assert replay_with_new_key.replayed
     assert replay_with_new_key.decision_id == first.decision_id
     related = service.query_related_documents(property_id)
@@ -218,8 +221,9 @@ def test_validation_failure_rolls_back_confirmation(
         validator,
     )[0]
     validator.valid = False
+    confirmation = ConfirmationService(database)
     with pytest.raises(EvidenceValidationError):
-        ConfirmationService(database).confirm(
+        confirmation.confirm(
             proposal_id=proposal_id,
             reviewer="local-user",
             idempotency_key="bad-confirm",
@@ -269,8 +273,9 @@ def test_real_validator_rejects_stale_evidence_and_rolls_back(
             .values(normalised_address="changed address")
         )
 
+    confirmation = ConfirmationService(database)
     with pytest.raises(EvidenceValidationError, match="became invalid"):
-        ConfirmationService(database).confirm(
+        confirmation.confirm(
             proposal_id=proposal_id,
             reviewer="local-user",
             idempotency_key="stale-confirm",
@@ -292,20 +297,18 @@ def test_closed_registry_bound_and_integrity(
         document_id,
         [ExtractionSignalInput("model", "cold-1", "COLD-1", "page:1", "fixture", "1")],
     )[0]
-    with pytest.raises(ValueError, match="at most three"):
-        service.persist_proposals(
-            document_id,
-            [
-                ProposalInput(
-                    asset_id,
-                    "purchase_evidence_for",
-                    rank,
-                    (ProposalEvidenceInput("model_exact", signal_id, asset_id),),
-                )
-                for rank in range(4)
-            ],
-            ToggleValidator(),
+    proposals = [
+        ProposalInput(
+            asset_id,
+            "purchase_evidence_for",
+            rank,
+            (ProposalEvidenceInput("model_exact", signal_id, asset_id),),
         )
+        for rank in range(4)
+    ]
+    validator = ToggleValidator()
+    with pytest.raises(ValueError, match="at most three"):
+        service.persist_proposals(document_id, proposals, validator)
     report = IntegrityService(service.database, store).inspect()
     assert report.database_ok
     assert not report.foreign_key_errors

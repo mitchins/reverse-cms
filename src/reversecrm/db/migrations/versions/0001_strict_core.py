@@ -8,6 +8,9 @@ down_revision = None
 branch_labels = None
 depends_on = None
 
+_OBJECT_ID_TARGET = "object.id"
+_DOCUMENT_OBJECT_ID_TARGET = "document.object_id"
+
 
 def upgrade() -> None:
     """Create revision 0001 without importing mutable application metadata."""
@@ -61,7 +64,7 @@ def upgrade() -> None:
         sa.Column("model", sa.Text()),
         sa.Column("serial", sa.Text()),
         sa.Column("order_reference", sa.Text()),
-        sa.ForeignKeyConstraint(["object_id"], ["object.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["object_id"], [_OBJECT_ID_TARGET], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("object_id"),
         sqlite_strict=True,
     )
@@ -93,7 +96,7 @@ def upgrade() -> None:
             name="ck_document_processing_state",
         ),
         sa.ForeignKeyConstraint(["evidence_blob_id"], ["evidence_blob.id"]),
-        sa.ForeignKeyConstraint(["object_id"], ["object.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["object_id"], [_OBJECT_ID_TARGET], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("object_id"),
         sa.UniqueConstraint("evidence_blob_id"),
         sqlite_strict=True,
@@ -103,7 +106,7 @@ def upgrade() -> None:
         sa.Column("object_id", sa.Text(), nullable=False),
         sa.Column("canonical_name", sa.Text(), nullable=False),
         sa.Column("normalised_name", sa.Text(), nullable=False),
-        sa.ForeignKeyConstraint(["object_id"], ["object.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["object_id"], [_OBJECT_ID_TARGET], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("object_id"),
         sqlite_strict=True,
     )
@@ -116,7 +119,7 @@ def upgrade() -> None:
             "occupancy IS NULL OR occupancy IN ('rental','occupied')",
             name="ck_property_occupancy",
         ),
-        sa.ForeignKeyConstraint(["object_id"], ["object.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["object_id"], [_OBJECT_ID_TARGET], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("object_id"),
         sqlite_strict=True,
     )
@@ -143,8 +146,8 @@ def upgrade() -> None:
         sa.Column("issuer_organisation_id", sa.Text(), nullable=False),
         sa.Column("related_subject_id", sa.Text(), nullable=False),
         sa.ForeignKeyConstraint(["issuer_organisation_id"], ["organisation.object_id"]),
-        sa.ForeignKeyConstraint(["object_id"], ["object.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["related_subject_id"], ["object.id"]),
+        sa.ForeignKeyConstraint(["object_id"], [_OBJECT_ID_TARGET], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["related_subject_id"], [_OBJECT_ID_TARGET]),
         sa.PrimaryKeyConstraint("object_id"),
         sa.UniqueConstraint("issuer_organisation_id", "account_type", "suffix"),
         sqlite_strict=True,
@@ -165,7 +168,7 @@ def upgrade() -> None:
             "'purchase_date','amount_minor','make','model','serial','order_reference')",
             name="ck_extraction_signal_type",
         ),
-        sa.ForeignKeyConstraint(["document_id"], ["document.object_id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["document_id"], [_DOCUMENT_OBJECT_ID_TARGET], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("document_id", "signal_type", "normalised_value", "source_locator"),
         sqlite_strict=True,
@@ -193,7 +196,7 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "state IN ('pending','processing','complete','failed')", name="ck_job_state"
         ),
-        sa.ForeignKeyConstraint(["document_id"], ["document.object_id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["document_id"], [_DOCUMENT_OBJECT_ID_TARGET], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("document_id"),
         sqlite_strict=True,
     )
@@ -213,8 +216,8 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("state IN ('pending','accepted','rejected')", name="ck_proposal_state"),
         sa.CheckConstraint("rank BETWEEN 1 AND 3", name="ck_proposal_rank"),
-        sa.ForeignKeyConstraint(["candidate_object_id"], ["object.id"]),
-        sa.ForeignKeyConstraint(["document_id"], ["document.object_id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["candidate_object_id"], [_OBJECT_ID_TARGET]),
+        sa.ForeignKeyConstraint(["document_id"], [_DOCUMENT_OBJECT_ID_TARGET], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("document_id", "candidate_object_id", "predicate"),
         sa.UniqueConstraint("document_id", "rank"),
@@ -235,7 +238,7 @@ def upgrade() -> None:
             name="ck_proposal_evidence_code",
         ),
         sa.ForeignKeyConstraint(["extraction_signal_id"], ["extraction_signal.id"]),
-        sa.ForeignKeyConstraint(["matched_object_id"], ["object.id"]),
+        sa.ForeignKeyConstraint(["matched_object_id"], [_OBJECT_ID_TARGET]),
         sa.ForeignKeyConstraint(["proposal_id"], ["proposal.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
@@ -279,8 +282,8 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("status = 'confirmed'", name="ck_relation_status"),
         sa.ForeignKeyConstraint(["confirmation_decision_id"], ["review_decision.id"]),
-        sa.ForeignKeyConstraint(["document_id"], ["document.object_id"]),
-        sa.ForeignKeyConstraint(["target_object_id"], ["object.id"]),
+        sa.ForeignKeyConstraint(["document_id"], [_DOCUMENT_OBJECT_ID_TARGET]),
+        sa.ForeignKeyConstraint(["target_object_id"], [_OBJECT_ID_TARGET]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("document_id", "predicate", "target_object_id"),
         sqlite_strict=True,

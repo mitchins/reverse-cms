@@ -197,5 +197,6 @@ def test_reader_cannot_return_more_than_bound() -> None:
             ]
 
     extracted = extract_anchor("RECEIPT\nModel: CHILL-500\n")
+    reader = BrokenReader()
     with pytest.raises(ValueError, match="bounded retrieval"):
-        build_proposals(extracted.document_kind, extracted.signals, BrokenReader())
+        build_proposals(extracted.document_kind, extracted.signals, reader)

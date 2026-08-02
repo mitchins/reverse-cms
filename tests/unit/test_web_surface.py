@@ -226,3 +226,22 @@ def test_expired_session_is_rejected_and_logout_requires_csrf(tmp_path: Path) ->
         assert logged_out.status_code == 303
         assert "reversecrm_session" not in client.cookies
     app.state.database.engine.dispose()
+
+
+def test_openapi_documents_explicit_error_responses(tmp_path: Path) -> None:
+    app = create_app(settings_for(tmp_path))
+    paths = app.openapi()["paths"]
+
+    assert set(paths["/documents"]["post"]["responses"]) >= {"401", "403", "413"}
+    assert set(paths["/documents/{document_id}"]["get"]["responses"]) >= {"401", "404"}
+    assert set(paths["/proposals/{proposal_id}/confirm"]["post"]["responses"]) >= {
+        "401",
+        "403",
+    }
+    assert set(paths["/api/proposals/{proposal_id}/confirm"]["post"]["responses"]) >= {
+        "400",
+        "401",
+    }
+    assert "401" in paths["/relationships/{relationship_id}"]["get"]["responses"]
+    assert "401" in paths["/objects/{object_id}/documents"]["get"]["responses"]
+    app.state.database.engine.dispose()

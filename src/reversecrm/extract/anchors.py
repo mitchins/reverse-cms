@@ -16,7 +16,7 @@ from reversecrm.domain.normalise import (
 )
 
 EXTRACTOR_VERSION = "anchor-v1"
-_LABEL = re.compile(r"^\s*([A-Za-z][A-Za-z /-]{1,40})\s*:\s*(.*?)\s*$")
+_LABEL_NAME = re.compile(r"[A-Za-z][A-Za-z /-]{1,40}")
 _DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %B %Y", "%d %b %Y")
 
 
@@ -29,11 +29,13 @@ class ExtractionResult:
 def _fields(text: str) -> dict[str, list[tuple[str, str]]]:
     result: dict[str, list[tuple[str, str]]] = {}
     for number, line in enumerate(text.splitlines(), start=1):
-        match = _LABEL.match(line)
-        if not match or not match.group(2):
+        label, separator, value = line.strip().partition(":")
+        label = label.strip()
+        value = value.strip()
+        if not separator or not value or _LABEL_NAME.fullmatch(label) is None:
             continue
-        key = normalise_text(match.group(1))
-        result.setdefault(key, []).append((match.group(2).strip(), f"line:{number}"))
+        key = normalise_text(label)
+        result.setdefault(key, []).append((value, f"line:{number}"))
     return result
 
 

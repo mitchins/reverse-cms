@@ -170,7 +170,7 @@ def _poll_forever(
         try:
             worked = run_once(application, worker_id=worker_id, logger=logger)
         except Exception as error:
-            logger.error(
+            logger.exception(
                 "worker_poll_failed",
                 extra={
                     "worker_id": worker_id,

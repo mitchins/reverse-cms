@@ -14,6 +14,9 @@ from sqlalchemy import (
 
 metadata = MetaData()
 
+_OBJECT_ID_TARGET = "object.id"
+_DOCUMENT_OBJECT_ID_TARGET = "document.object_id"
+
 object_table = Table(
     "object",
     metadata,
@@ -31,7 +34,7 @@ object_table = Table(
 organisation = Table(
     "organisation",
     metadata,
-    Column("object_id", Text, ForeignKey("object.id", ondelete="CASCADE"), primary_key=True),
+    Column("object_id", Text, ForeignKey(_OBJECT_ID_TARGET, ondelete="CASCADE"), primary_key=True),
     Column("canonical_name", Text, nullable=False),
     Column("normalised_name", Text, nullable=False),
     sqlite_strict=True,
@@ -52,7 +55,7 @@ organisation_alias = Table(
 property_table = Table(
     "property",
     metadata,
-    Column("object_id", Text, ForeignKey("object.id", ondelete="CASCADE"), primary_key=True),
+    Column("object_id", Text, ForeignKey(_OBJECT_ID_TARGET, ondelete="CASCADE"), primary_key=True),
     Column("normalised_address", Text, nullable=False),
     Column("occupancy", Text),
     CheckConstraint(
@@ -63,18 +66,18 @@ property_table = Table(
 account = Table(
     "account",
     metadata,
-    Column("object_id", Text, ForeignKey("object.id", ondelete="CASCADE"), primary_key=True),
+    Column("object_id", Text, ForeignKey(_OBJECT_ID_TARGET, ondelete="CASCADE"), primary_key=True),
     Column("account_type", Text, nullable=False),
     Column("suffix", Text, nullable=False),
     Column("issuer_organisation_id", Text, ForeignKey("organisation.object_id"), nullable=False),
-    Column("related_subject_id", Text, ForeignKey("object.id"), nullable=False),
+    Column("related_subject_id", Text, ForeignKey(_OBJECT_ID_TARGET), nullable=False),
     UniqueConstraint("issuer_organisation_id", "account_type", "suffix"),
     sqlite_strict=True,
 )
 asset = Table(
     "asset",
     metadata,
-    Column("object_id", Text, ForeignKey("object.id", ondelete="CASCADE"), primary_key=True),
+    Column("object_id", Text, ForeignKey(_OBJECT_ID_TARGET, ondelete="CASCADE"), primary_key=True),
     Column("make", Text),
     Column("model", Text),
     Column("serial", Text),
@@ -117,7 +120,7 @@ source_reference = Table(
 document = Table(
     "document",
     metadata,
-    Column("object_id", Text, ForeignKey("object.id", ondelete="CASCADE"), primary_key=True),
+    Column("object_id", Text, ForeignKey(_OBJECT_ID_TARGET, ondelete="CASCADE"), primary_key=True),
     Column("evidence_blob_id", Text, ForeignKey("evidence_blob.id"), nullable=False, unique=True),
     Column("document_type", Text),
     Column("document_date", Text),
@@ -134,7 +137,10 @@ extraction_signal = Table(
     metadata,
     Column("id", Text, primary_key=True),
     Column(
-        "document_id", Text, ForeignKey("document.object_id", ondelete="CASCADE"), nullable=False
+        "document_id",
+        Text,
+        ForeignKey(_DOCUMENT_OBJECT_ID_TARGET, ondelete="CASCADE"),
+        nullable=False,
     ),
     Column("signal_type", Text, nullable=False),
     Column("normalised_value", Text, nullable=False),
@@ -155,9 +161,12 @@ proposal = Table(
     metadata,
     Column("id", Text, primary_key=True),
     Column(
-        "document_id", Text, ForeignKey("document.object_id", ondelete="CASCADE"), nullable=False
+        "document_id",
+        Text,
+        ForeignKey(_DOCUMENT_OBJECT_ID_TARGET, ondelete="CASCADE"),
+        nullable=False,
     ),
-    Column("candidate_object_id", Text, ForeignKey("object.id"), nullable=False),
+    Column("candidate_object_id", Text, ForeignKey(_OBJECT_ID_TARGET), nullable=False),
     Column("predicate", Text, nullable=False),
     Column("score", Integer, nullable=False),
     Column("rank", Integer, nullable=False),
@@ -179,7 +188,7 @@ proposal_evidence = Table(
     Column("proposal_id", Text, ForeignKey("proposal.id", ondelete="CASCADE"), nullable=False),
     Column("evidence_code", Text, nullable=False),
     Column("extraction_signal_id", Text, ForeignKey("extraction_signal.id"), nullable=False),
-    Column("matched_object_id", Text, ForeignKey("object.id"), nullable=False),
+    Column("matched_object_id", Text, ForeignKey(_OBJECT_ID_TARGET), nullable=False),
     Column("validation_version", Text, nullable=False),
     UniqueConstraint("proposal_id", "evidence_code", "extraction_signal_id", "matched_object_id"),
     CheckConstraint(
@@ -211,9 +220,9 @@ relation = Table(
     "relation",
     metadata,
     Column("id", Text, primary_key=True),
-    Column("document_id", Text, ForeignKey("document.object_id"), nullable=False),
+    Column("document_id", Text, ForeignKey(_DOCUMENT_OBJECT_ID_TARGET), nullable=False),
     Column("predicate", Text, nullable=False),
-    Column("target_object_id", Text, ForeignKey("object.id"), nullable=False),
+    Column("target_object_id", Text, ForeignKey(_OBJECT_ID_TARGET), nullable=False),
     Column("status", Text, nullable=False),
     Column("confirmation_decision_id", Text, ForeignKey("review_decision.id"), nullable=False),
     Column("created_at", Text, nullable=False),
@@ -251,7 +260,10 @@ processing_job = Table(
     "processing_job",
     metadata,
     Column(
-        "document_id", Text, ForeignKey("document.object_id", ondelete="CASCADE"), primary_key=True
+        "document_id",
+        Text,
+        ForeignKey(_DOCUMENT_OBJECT_ID_TARGET, ondelete="CASCADE"),
+        primary_key=True,
     ),
     Column("state", Text, nullable=False),
     Column("attempt_count", Integer, nullable=False, server_default="0"),

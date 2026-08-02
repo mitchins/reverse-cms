@@ -227,9 +227,10 @@ def test_claim_failure_is_logged_safely_and_polling_continues(
         if sleeps == 2:
             raise KeyboardInterrupt
 
+    runtime = ClaimFailureRuntime([])
     with pytest.raises(KeyboardInterrupt):
         _poll_forever(
-            ClaimFailureRuntime([]),
+            runtime,
             worker_id="worker-1",
             logger=logger,
             sleep=bounded_sleep,

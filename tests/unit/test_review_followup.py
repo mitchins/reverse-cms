@@ -67,13 +67,14 @@ def test_synchronous_helper_claims_only_the_submitted_document() -> None:
 def test_synchronous_helper_marks_owned_lease_failed_before_reraising() -> None:
     persistence = SyncPersistenceFake(ProcessingError("text_extraction_timeout"))
     application = _synchronous_application(persistence)
+    extractor = BoundedTextExtractor()
 
     with pytest.raises(ProcessingError, match="text_extraction_timeout"):
         application.submit_and_process(
             content=b"fixture",
             filename="fixture.pdf",
             source_identity="review-followup",
-            text_extractor=BoundedTextExtractor(),
+            text_extractor=extractor,
         )
 
     assert len(persistence.failures) == 1

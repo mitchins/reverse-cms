@@ -192,9 +192,10 @@ def test_source_replay_with_different_bytes_is_typed_conflict(
 ) -> None:
     _, service = persistence
     service.ingest_placement(source_kind="test", source_identity="same", placement=_placement())
+    changed_placement = _placement("c")
     with pytest.raises(IdempotencyConflict):
         service.ingest_placement(
-            source_kind="test", source_identity="same", placement=_placement("c")
+            source_kind="test", source_identity="same", placement=changed_placement
         )
 
 
@@ -334,6 +335,7 @@ def test_atomic_completion_rolls_back_and_verifies_lease(
             ),
         ),
     )
+    exploding_validator = ExplodingValidator()
     with pytest.raises(RuntimeError, match="fault before"):
         service.complete_processing(
             document_id,
@@ -343,7 +345,7 @@ def test_atomic_completion_rolls_back_and_verifies_lease(
             extractor_version="anchor-v1",
             signals=(signal,),
             proposals=(completion_proposal,),
-            validator=ExplodingValidator(),
+            validator=exploding_validator,
         )
     with database.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(extraction_signal)) == 0
@@ -374,6 +376,7 @@ def test_atomic_completion_rolls_back_and_verifies_lease(
         signal,
         ExtractionSignalInput("amount_minor", "10000", "$100.00", "line:4", "anchor", "anchor-v1"),
     )
+    replay_validator = SqlEvidenceValidator()
     with pytest.raises(ProcessingConflict, match="extraction differs"):
         service.complete_processing(
             document_id,
@@ -383,7 +386,7 @@ def test_atomic_completion_rolls_back_and_verifies_lease(
             extractor_version="anchor-v1",
             signals=changed_signals,
             proposals=(completion_proposal,),
-            validator=SqlEvidenceValidator(),
+            validator=replay_validator,
         )
     with database.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(extraction_signal)) == 1
@@ -419,6 +422,7 @@ def test_expired_lease_cannot_complete_or_persist_output(
             ),
         ),
     )
+    validator = SqlEvidenceValidator()
     with pytest.raises(ProcessingConflict):
         service.complete_processing(
             document_id,
@@ -428,7 +432,7 @@ def test_expired_lease_cannot_complete_or_persist_output(
             extractor_version="anchor-v1",
             signals=(signal,),
             proposals=(proposal_input,),
-            validator=SqlEvidenceValidator(),
+            validator=validator,
         )
     with database.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(extraction_signal)) == 0

@@ -197,106 +197,19 @@ class PersistenceService:
         received_metadata: Mapping[str, Any] | None = None,
     ) -> SubmissionResult:
         """Register pre-hashed evidence and its logical document atomically."""
-        if not source_kind.strip() or not source_identity.strip():
-            raise ValueError("source kind and identity must be non-empty")
-        if (
-            len(placement.sha256) != 64
-            or any(character not in "0123456789abcdef" for character in placement.sha256)
-            or placement.relative_path
-            != f"{placement.sha256[:2]}/{placement.sha256[2:4]}/{placement.sha256}"
-            or placement.byte_size < 0
-            or not placement.detected_mime
-        ):
-            raise ValueError("invalid evidence placement")
+        self._validate_ingest_input(source_kind, source_identity, placement)
         metadata_json = json.dumps(received_metadata or {}, sort_keys=True, separators=(",", ":"))
         with self.database.transaction() as connection:
-            replay = (
-                connection.execute(
-                    select(source_reference).where(
-                        and_(
-                            source_reference.c.source_kind == source_kind,
-                            source_reference.c.source_identity == source_identity,
-                        )
-                    )
-                )
-                .mappings()
-                .one_or_none()
+            replay = self._find_source_replay(
+                connection, source_kind, source_identity, placement.sha256
             )
             if replay is not None:
-                blob = (
-                    connection.execute(
-                        select(evidence_blob).where(
-                            evidence_blob.c.id == replay["evidence_blob_id"]
-                        )
-                    )
-                    .mappings()
-                    .one()
-                )
-                if blob["sha256"] != placement.sha256:
-                    raise IdempotencyConflict(
-                        "source identity was already registered with different evidence"
-                    )
-                document_id = connection.execute(
-                    select(document.c.object_id).where(document.c.evidence_blob_id == blob["id"])
-                ).scalar_one()
-                return SubmissionResult(document_id, blob["id"], replay["id"], True, True)
+                return replay
 
-            existing_blob = (
-                connection.execute(
-                    select(evidence_blob).where(evidence_blob.c.sha256 == placement.sha256)
-                )
-                .mappings()
-                .one_or_none()
+            blob_id = self._get_or_create_evidence_blob(connection, placement)
+            document_id, reused_document = self._get_or_create_document(
+                connection, blob_id, placement.sha256, original_name
             )
-            if existing_blob is None:
-                blob_id = _id()
-                connection.execute(
-                    insert(evidence_blob).values(
-                        id=blob_id,
-                        sha256=placement.sha256,
-                        byte_size=placement.byte_size,
-                        detected_mime=placement.detected_mime,
-                        relative_path=placement.relative_path,
-                        created_at=_now(),
-                    )
-                )
-            else:
-                blob_id = existing_blob["id"]
-                if (
-                    existing_blob["byte_size"] != placement.byte_size
-                    or existing_blob["relative_path"] != placement.relative_path
-                    or existing_blob["detected_mime"] != placement.detected_mime
-                ):
-                    raise ValueError("evidence metadata conflicts with registered digest")
-
-            existing_document = connection.execute(
-                select(document.c.object_id).where(document.c.evidence_blob_id == blob_id)
-            ).scalar_one_or_none()
-            reused_document = existing_document is not None
-            if existing_document is None:
-                document_id = _id()
-                now = _now()
-                connection.execute(
-                    insert(object_table).values(
-                        id=document_id,
-                        kind="document",
-                        label=original_name or f"Document {placement.sha256[:12]}",
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                connection.execute(
-                    insert(document).values(
-                        object_id=document_id, evidence_blob_id=blob_id, processing_state="pending"
-                    )
-                )
-                connection.execute(
-                    insert(processing_job).values(
-                        document_id=document_id, state="pending", attempt_count=0, updated_at=now
-                    )
-                )
-            else:
-                document_id = existing_document
             source_id = _id()
             connection.execute(
                 insert(source_reference).values(
@@ -310,6 +223,123 @@ class PersistenceService:
                 )
             )
             return SubmissionResult(document_id, blob_id, source_id, False, reused_document)
+
+    @staticmethod
+    def _validate_ingest_input(
+        source_kind: str, source_identity: str, placement: EvidencePlacement
+    ) -> None:
+        if not source_kind.strip() or not source_identity.strip():
+            raise ValueError("source kind and identity must be non-empty")
+        expected_path = f"{placement.sha256[:2]}/{placement.sha256[2:4]}/{placement.sha256}"
+        valid_digest = len(placement.sha256) == 64 and all(
+            character in "0123456789abcdef" for character in placement.sha256
+        )
+        if (
+            not valid_digest
+            or placement.relative_path != expected_path
+            or placement.byte_size < 0
+            or not placement.detected_mime
+        ):
+            raise ValueError("invalid evidence placement")
+
+    @staticmethod
+    def _find_source_replay(
+        connection: Any, source_kind: str, source_identity: str, sha256: str
+    ) -> SubmissionResult | None:
+        replay = (
+            connection.execute(
+                select(source_reference).where(
+                    and_(
+                        source_reference.c.source_kind == source_kind,
+                        source_reference.c.source_identity == source_identity,
+                    )
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if replay is None:
+            return None
+        blob = (
+            connection.execute(
+                select(evidence_blob).where(evidence_blob.c.id == replay["evidence_blob_id"])
+            )
+            .mappings()
+            .one()
+        )
+        if blob["sha256"] != sha256:
+            raise IdempotencyConflict(
+                "source identity was already registered with different evidence"
+            )
+        document_id = connection.execute(
+            select(document.c.object_id).where(document.c.evidence_blob_id == blob["id"])
+        ).scalar_one()
+        return SubmissionResult(document_id, blob["id"], replay["id"], True, True)
+
+    @staticmethod
+    def _get_or_create_evidence_blob(connection: Any, placement: EvidencePlacement) -> str:
+        existing = (
+            connection.execute(
+                select(evidence_blob).where(evidence_blob.c.sha256 == placement.sha256)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if existing is None:
+            blob_id = _id()
+            connection.execute(
+                insert(evidence_blob).values(
+                    id=blob_id,
+                    sha256=placement.sha256,
+                    byte_size=placement.byte_size,
+                    detected_mime=placement.detected_mime,
+                    relative_path=placement.relative_path,
+                    created_at=_now(),
+                )
+            )
+            return blob_id
+        if (
+            existing["byte_size"] != placement.byte_size
+            or existing["relative_path"] != placement.relative_path
+            or existing["detected_mime"] != placement.detected_mime
+        ):
+            raise ValueError("evidence metadata conflicts with registered digest")
+        blob_id = existing["id"]
+        if not isinstance(blob_id, str):
+            raise TypeError("evidence blob ID is not text")
+        return blob_id
+
+    @staticmethod
+    def _get_or_create_document(
+        connection: Any, blob_id: str, sha256: str, original_name: str | None
+    ) -> tuple[str, bool]:
+        existing = connection.execute(
+            select(document.c.object_id).where(document.c.evidence_blob_id == blob_id)
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing, True
+        document_id = _id()
+        now = _now()
+        connection.execute(
+            insert(object_table).values(
+                id=document_id,
+                kind="document",
+                label=original_name or f"Document {sha256[:12]}",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        connection.execute(
+            insert(document).values(
+                object_id=document_id, evidence_blob_id=blob_id, processing_state="pending"
+            )
+        )
+        connection.execute(
+            insert(processing_job).values(
+                document_id=document_id, state="pending", attempt_count=0, updated_at=now
+            )
+        )
+        return document_id, False
 
     def store_extraction_signals(
         self, document_id: str, signals: Iterable[ExtractionSignalInput]
@@ -395,11 +425,7 @@ class PersistenceService:
         proposals: Sequence[ProposalInput],
         validator: EvidenceValidator,
     ) -> tuple[list[str], bool]:
-        if len(proposals) > 3:
-            raise ValueError("at most three proposals may be persisted")
-        identities = {(item.candidate_object_id, item.predicate) for item in proposals}
-        if len(identities) != len(proposals):
-            raise ValueError("duplicate proposal candidate/predicate")
+        PersistenceService._validate_proposal_batch(proposals)
         existing = list(
             connection.execute(
                 select(proposal)
@@ -408,112 +434,181 @@ class PersistenceService:
             ).mappings()
         )
         if existing:
-            if len(existing) != len(proposals):
-                raise ProposalConflict("persisted proposals differ from replay")
-            for rank, (row, item) in enumerate(zip(existing, proposals, strict=True), start=1):
-                if (
-                    row["candidate_object_id"],
-                    row["predicate"],
-                    row["score"],
-                    row["rank"],
-                ) != (item.candidate_object_id, item.predicate, item.score, rank):
-                    raise ProposalConflict("persisted proposals differ from replay")
-                stored_evidence = set(
-                    connection.execute(
-                        select(
-                            proposal_evidence.c.evidence_code,
-                            proposal_evidence.c.extraction_signal_id,
-                            proposal_evidence.c.matched_object_id,
-                            proposal_evidence.c.validation_version,
-                        ).where(proposal_evidence.c.proposal_id == row["id"])
-                    ).tuples()
-                )
-                requested_evidence = {
-                    (
-                        evidence.code,
-                        evidence.signal_id,
-                        evidence.matched_object_id,
-                        evidence.validation_version,
-                    )
-                    for evidence in item.evidence
-                }
-                if stored_evidence != requested_evidence:
-                    raise ProposalConflict("persisted proposal evidence differs from replay")
-                if not ({e.code for e in item.evidence} & CANDIDATE_SPECIFIC_CODES):
-                    raise EvidenceValidationError("proposal lacks candidate-specific evidence")
-                for evidence in item.evidence:
-                    request = ValidationRequest(
-                        document_id,
-                        item.candidate_object_id,
-                        item.predicate,
-                        evidence.code,
-                        evidence.signal_id,
-                        evidence.matched_object_id,
-                    )
-                    if not validator.validate(connection, request):
-                        raise EvidenceValidationError(
-                            f"evidence failed validation: {evidence.code}"
-                        )
-            return [row["id"] for row in existing], True
+            ids = PersistenceService._validate_proposal_replay(
+                connection, document_id, proposals, existing, validator
+            )
+            return ids, True
+        return PersistenceService._insert_proposals(
+            connection, document_id, proposals, validator
+        ), False
 
+    @staticmethod
+    def _validate_proposal_batch(proposals: Sequence[ProposalInput]) -> None:
+        if len(proposals) > 3:
+            raise ValueError("at most three proposals may be persisted")
+        identities = {(item.candidate_object_id, item.predicate) for item in proposals}
+        if len(identities) != len(proposals):
+            raise ValueError("duplicate proposal candidate/predicate")
+
+    @staticmethod
+    def _validate_proposal_replay(
+        connection: Any,
+        document_id: str,
+        proposals: Sequence[ProposalInput],
+        existing: Sequence[Mapping[str, Any]],
+        validator: EvidenceValidator,
+    ) -> list[str]:
+        if len(existing) != len(proposals):
+            raise ProposalConflict("persisted proposals differ from replay")
+        for rank, (row, item) in enumerate(zip(existing, proposals, strict=True), start=1):
+            PersistenceService._validate_replayed_proposal(
+                connection, document_id, row, item, rank, validator
+            )
+        return [row["id"] for row in existing]
+
+    @staticmethod
+    def _validate_replayed_proposal(
+        connection: Any,
+        document_id: str,
+        row: Mapping[str, Any],
+        item: ProposalInput,
+        rank: int,
+        validator: EvidenceValidator,
+    ) -> None:
+        stored_identity = (
+            row["candidate_object_id"],
+            row["predicate"],
+            row["score"],
+            row["rank"],
+        )
+        requested_identity = (item.candidate_object_id, item.predicate, item.score, rank)
+        if stored_identity != requested_identity:
+            raise ProposalConflict("persisted proposals differ from replay")
+        stored_evidence = set(
+            connection.execute(
+                select(
+                    proposal_evidence.c.evidence_code,
+                    proposal_evidence.c.extraction_signal_id,
+                    proposal_evidence.c.matched_object_id,
+                    proposal_evidence.c.validation_version,
+                ).where(proposal_evidence.c.proposal_id == row["id"])
+            ).tuples()
+        )
+        if stored_evidence != PersistenceService._evidence_identity_set(item.evidence):
+            raise ProposalConflict("persisted proposal evidence differs from replay")
+        PersistenceService._require_candidate_evidence(item)
+        for evidence in item.evidence:
+            PersistenceService._validate_evidence_request(
+                connection, document_id, item, evidence, validator
+            )
+
+    @staticmethod
+    def _evidence_identity_set(
+        evidence_items: Sequence[ProposalEvidenceInput],
+    ) -> set[tuple[str, str, str | None, str]]:
+        return {
+            (
+                evidence.code,
+                evidence.signal_id,
+                evidence.matched_object_id,
+                evidence.validation_version,
+            )
+            for evidence in evidence_items
+        }
+
+    @staticmethod
+    def _require_candidate_evidence(item: ProposalInput) -> None:
+        if not item.evidence or not (
+            {evidence.code for evidence in item.evidence} & CANDIDATE_SPECIFIC_CODES
+        ):
+            raise EvidenceValidationError("proposal lacks candidate-specific evidence")
+
+    @staticmethod
+    def _validate_evidence_request(
+        connection: Any,
+        document_id: str,
+        item: ProposalInput,
+        evidence: ProposalEvidenceInput,
+        validator: EvidenceValidator,
+    ) -> None:
+        request = ValidationRequest(
+            document_id,
+            item.candidate_object_id,
+            item.predicate,
+            evidence.code,
+            evidence.signal_id,
+            evidence.matched_object_id,
+        )
+        if not validator.validate(connection, request):
+            raise EvidenceValidationError(f"evidence failed validation: {evidence.code}")
+
+    @staticmethod
+    def _insert_proposals(
+        connection: Any,
+        document_id: str,
+        proposals: Sequence[ProposalInput],
+        validator: EvidenceValidator,
+    ) -> list[str]:
         ids: list[str] = []
         for rank, item in enumerate(proposals, start=1):
-            if item.predicate not in PREDICATES:
-                raise ValueError(f"unknown predicate: {item.predicate}")
-            if not item.evidence or not (
-                {e.code for e in item.evidence} & CANDIDATE_SPECIFIC_CODES
-            ):
-                raise EvidenceValidationError("proposal lacks candidate-specific evidence")
-            proposal_id = _id()
-            validated: list[Any] = []
-            for evidence in item.evidence:
-                if evidence.code not in EVIDENCE_CODES:
-                    raise EvidenceValidationError(f"unknown evidence code: {evidence.code}")
-                signal_document = connection.execute(
-                    select(extraction_signal.c.document_id).where(
-                        extraction_signal.c.id == evidence.signal_id
-                    )
-                ).scalar_one_or_none()
-                if signal_document != document_id:
-                    raise EvidenceValidationError(
-                        "evidence signal does not belong to proposal document"
-                    )
-                request = ValidationRequest(
-                    document_id,
-                    item.candidate_object_id,
-                    item.predicate,
-                    evidence.code,
-                    evidence.signal_id,
-                    evidence.matched_object_id,
+            PersistenceService._validate_new_proposal(connection, document_id, item, validator)
+            proposal_id = PersistenceService._insert_proposal(connection, document_id, item, rank)
+            ids.append(proposal_id)
+        return ids
+
+    @staticmethod
+    def _validate_new_proposal(
+        connection: Any,
+        document_id: str,
+        item: ProposalInput,
+        validator: EvidenceValidator,
+    ) -> None:
+        if item.predicate not in PREDICATES:
+            raise ValueError(f"unknown predicate: {item.predicate}")
+        PersistenceService._require_candidate_evidence(item)
+        for evidence in item.evidence:
+            if evidence.code not in EVIDENCE_CODES:
+                raise EvidenceValidationError(f"unknown evidence code: {evidence.code}")
+            signal_document = connection.execute(
+                select(extraction_signal.c.document_id).where(
+                    extraction_signal.c.id == evidence.signal_id
                 )
-                if not validator.validate(connection, request):
-                    raise EvidenceValidationError(f"evidence failed validation: {evidence.code}")
-                validated.append(evidence)
+            ).scalar_one_or_none()
+            if signal_document != document_id:
+                raise EvidenceValidationError(
+                    "evidence signal does not belong to proposal document"
+                )
+            PersistenceService._validate_evidence_request(
+                connection, document_id, item, evidence, validator
+            )
+
+    @staticmethod
+    def _insert_proposal(connection: Any, document_id: str, item: ProposalInput, rank: int) -> str:
+        proposal_id = _id()
+        connection.execute(
+            insert(proposal).values(
+                id=proposal_id,
+                document_id=document_id,
+                candidate_object_id=item.candidate_object_id,
+                predicate=item.predicate,
+                score=item.score,
+                rank=rank,
+                state="pending",
+                created_at=_now(),
+            )
+        )
+        for evidence in item.evidence:
             connection.execute(
-                insert(proposal).values(
-                    id=proposal_id,
-                    document_id=document_id,
-                    candidate_object_id=item.candidate_object_id,
-                    predicate=item.predicate,
-                    score=item.score,
-                    rank=rank,
-                    state="pending",
-                    created_at=_now(),
+                insert(proposal_evidence).values(
+                    id=_id(),
+                    proposal_id=proposal_id,
+                    evidence_code=evidence.code,
+                    extraction_signal_id=evidence.signal_id,
+                    matched_object_id=evidence.matched_object_id,
+                    validation_version=evidence.validation_version,
                 )
             )
-            for evidence in validated:
-                connection.execute(
-                    insert(proposal_evidence).values(
-                        id=_id(),
-                        proposal_id=proposal_id,
-                        evidence_code=evidence.code,
-                        extraction_signal_id=evidence.signal_id,
-                        matched_object_id=evidence.matched_object_id,
-                        validation_version=evidence.validation_version,
-                    )
-                )
-            ids.append(proposal_id)
-        return ids, False
+        return proposal_id
 
     def list_proposals(self, document_id: str) -> list[dict[str, Any]]:
         with self.database.connect() as connection:
